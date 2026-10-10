@@ -1,0 +1,31 @@
+{
+  "title": "PM2.5 by station",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "PM2.5 by station",
+      "id": 1,
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT timestamp AS time, station_id AS metric, pm25 AS value FROM sensor_metrics WHERE $__timeFilter(timestamp) ORDER BY timestamp"
+        }
+      ],
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    }
+  ]
+}

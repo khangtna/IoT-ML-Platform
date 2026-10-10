@@ -1,0 +1,31 @@
+{
+  "title": "PM2.5 Forecast",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "PM2.5 Forecast",
+      "id": 1,
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT forecast_time AS time, station_id || ' - ' || model_name AS metric, predicted_pm25 AS value FROM pm25_forecast WHERE $__timeFilter(forecast_time) ORDER BY forecast_time"
+        }
+      ],
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    }
+  ]
+}
