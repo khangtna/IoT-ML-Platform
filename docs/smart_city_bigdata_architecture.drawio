@@ -1,0 +1,91 @@
+<mxfile host="app.diagrams.net" agent="ChatGPT">
+  <diagram id="smartcity-arch" name="Architecture">
+    <mxGraphModel dx="1204" dy="780" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontStyle=1" value="Smart City IoT Platform - Kiến trúc tổng quan" vertex="1">
+          <mxGeometry height="40" width="760" x="420" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="realtime" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1f5fe;strokeColor=#0288d1;fontStyle=1;fontSize=16;align=center;" value="" vertex="1">
+          <mxGeometry height="420" width="1050" x="59" y="93" as="geometry" />
+        </mxCell>
+        <mxCell id="iot" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1565c0;fontSize=14;align=center;verticalAlign=middle;" value="&lt;b&gt;IoT Sensors / Simulator&lt;br&gt;&lt;/b&gt;&lt;br&gt;PM2.5&lt;br&gt;CO2&lt;br&gt;Temperature&lt;br&gt;Humidity&lt;br&gt;&lt;br&gt;&amp;gt;= 500 events/s" vertex="1">
+          <mxGeometry height="210" width="180" x="100" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="kafka" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#ef6c00;fontSize=14;align=center;verticalAlign=middle;" value="&lt;b&gt;Apache Kafka&lt;br&gt;&lt;/b&gt;&lt;br&gt;Nhận và đệm dữ liệu&lt;br&gt;Topic: sensor-events" vertex="1">
+          <mxGeometry height="150" width="180" x="340" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="sparkstream" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#2e7d32;fontSize=14;align=center;verticalAlign=middle;" value="&lt;b&gt;Spark Structured Streaming&lt;br&gt;&lt;/b&gt;&lt;br&gt;1. Clean data&lt;br&gt;2. Handle missing values&lt;br&gt;3. Tumbling / Sliding Window&lt;br&gt;4. Rolling Z-score" vertex="1">
+          <mxGeometry height="230" width="240" x="580" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="db" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#7b1fa2;fontSize=14;align=center;verticalAlign=middle;" value="&lt;b&gt;Time-series DB&lt;br&gt;&lt;/b&gt;&lt;br&gt;TimescaleDB&lt;br&gt;(hoặc InfluxDB / Cassandra)&lt;br&gt;&lt;br&gt;Lưu processed data + history" vertex="1">
+          <mxGeometry height="160" width="190" x="880" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="anomaly" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffebee;strokeColor=#c62828;fontSize=14;align=center;verticalAlign=middle;" value="&lt;b&gt;Anomaly Detection&lt;br&gt;&lt;/b&gt;&lt;br&gt;Rolling Z-score&lt;br&gt;Phát hiện PM2.5 bất thường" vertex="1">
+          <mxGeometry height="110" width="190" x="880" y="365" as="geometry" />
+        </mxCell>
+        <mxCell id="batch" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#7b1fa2;fontStyle=1;fontSize=16;align=center;" value="" vertex="1">
+          <mxGeometry height="420" width="360" x="1160" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="airflow" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ede7f6;strokeColor=#5e35b1;fontSize=14;align=center;verticalAlign=middle;" value="&lt;b&gt;Apache Airflow&lt;br&gt;&lt;/b&gt;&lt;br&gt;Lập lịch cuối ngày&lt;br&gt;Điều phối retraining" vertex="1">
+          <mxGeometry height="110" width="190" x="1245" y="155" as="geometry" />
+        </mxCell>
+        <mxCell id="mllib" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ede7f6;strokeColor=#5e35b1;fontSize=14;align=center;verticalAlign=middle;" value="&lt;b&gt;Spark MLlib&lt;br&gt;&lt;/b&gt;&lt;br&gt;Linear Regression&lt;br&gt;Random Forest Regressor&lt;br&gt;&lt;br&gt;Forecast (dự báo) PM2.5 +1h / +2h / +3h" vertex="1">
+          <mxGeometry height="150" width="284" x="1210" y="315" as="geometry" />
+        </mxCell>
+        <mxCell id="grafana" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffde7;strokeColor=#f9a825;fontSize=15;fontStyle=1;align=center;verticalAlign=middle;" value="Grafana Dashboard&lt;br&gt;&lt;br&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); font-weight: normal;&quot;&gt;Real-time metrics&lt;/span&gt;&lt;/div&gt;&lt;span style=&quot;font-weight: normal; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;Anomaly alerts&lt;/span&gt;&lt;/div&gt;&lt;/span&gt;&lt;span style=&quot;font-weight: normal; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;Forecast&lt;/span&gt;&lt;/div&gt;&lt;/span&gt;&lt;span style=&quot;font-weight: normal; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;Heatmap&lt;/span&gt;&lt;/div&gt;&lt;/span&gt;" vertex="1">
+          <mxGeometry height="150" width="260" x="650" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="note" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#616161;fontSize=14;align=left;verticalAlign=middle;spacingLeft=12;" value="Ý chính: Có 2 luồng&#xa;1) Streaming: Sensor → Kafka → Spark → DB → Grafana&#xa;2) Batch/ML: DB → Airflow → MLlib → Forecast → DB/Grafana" vertex="1">
+          <mxGeometry height="130" width="460" x="1010" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="iot" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="kafka">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="kafka" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="sparkstream">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="sparkstream" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="sparkstream" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="anomaly">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="db" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;dashed=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;" target="airflow">
+          <mxGeometry relative="1" x="-0.1852" as="geometry">
+            <Array as="points">
+              <mxPoint x="1070" y="222" />
+              <mxPoint x="1140.5" y="222" />
+              <mxPoint x="1140.5" y="210" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="airflow" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="mllib">
+          <mxGeometry relative="1" x="-0.0997" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="mllib" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;dashed=1;" target="db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="db" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="grafana">
+          <mxGeometry relative="1" x="0.3121" as="geometry">
+            <Array as="points">
+              <mxPoint x="1101.3" y="293.8" />
+              <mxPoint x="1101.3" y="561.3" />
+              <mxPoint x="780" y="561.3" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="anomaly" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="grafana">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="XPlZ5oS91lPp5H-j4VzJ-1" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="&lt;span style=&quot;font-size: 16px; font-weight: 700;&quot;&gt;REAL-TIME STREAMING&lt;/span&gt;" vertex="1">
+          <mxGeometry height="30" width="284" x="423" y="99" as="geometry" />
+        </mxCell>
+        <mxCell id="XPlZ5oS91lPp5H-j4VzJ-2" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="&lt;span style=&quot;color: rgb(0, 0, 0); font-family: Helvetica; font-size: 16px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: center; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; float: none; display: inline !important;&quot;&gt;BATCH / MACHINE LEARNING&lt;/span&gt;" vertex="1">
+          <mxGeometry height="30" width="294" x="1205" y="99" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
