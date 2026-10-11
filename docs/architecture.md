@@ -1,5 +1,7 @@
 # Kiến trúc triển khai
 
+**Phase hiện tại: nền tảng cho Member 2.** Compose chỉ khởi động công cụ; streaming/producer/test được comment trong Compose, DAG Airflow mặc định Paused. Sơ đồ và thuật toán bên dưới mô tả luồng nghiệp vụ dành cho phase sau.
+
 ```mermaid
 flowchart LR
     CSV[CSV Beijing / Sensor simulator] --> K[Kafka sensor-events: 3 partitions]

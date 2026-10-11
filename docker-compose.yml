@@ -1,18 +1,28 @@
+# PHASE 1 — khangtna: dựng công cụ nền tảng, chưa chạy pipeline nghiệp vụ.
+# Chạy: ./scripts/start.sh hoặc docker-compose up -d --build
+# Port có dạng "máy host:container". Link truy cập nằm ở cuối file.
+# ${TEN_BIEN:-gia_tri} lấy cấu hình từ .env, nếu chưa có thì dùng giá trị mặc định.
+
+# Biến dùng chung cho Spark và Airflow; & đặt tên, * dùng lại cấu hình.
 x-spark-environment: &spark-env
-  KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+  KAFKA_BOOTSTRAP_SERVERS: kafka:29092  # Địa chỉ Kafka bên trong mạng Docker.
   KAFKA_TOPIC: sensor-events
+  # Spark/Airflow dùng JDBC để kết nối database dữ liệu môi trường.
   JDBC_URL: jdbc:postgresql://timescaledb:5432/${POSTGRES_DB:-smartcity}
   POSTGRES_USER: ${POSTGRES_USER:-smartcity}
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartcity}
-  ANOMALY_Z_THRESHOLD: ${ANOMALY_Z_THRESHOLD:-3.0}
-  ANOMALY_MIN_SAMPLES: ${ANOMALY_MIN_SAMPLES:-3}
-  PM25_ALERT_THRESHOLD: ${PM25_ALERT_THRESHOLD:-75}
-  INTERPOLATION_MAX_GAP_SECONDS: ${INTERPOLATION_MAX_GAP_SECONDS:-10800}
-  MAX_OFFSETS_PER_TRIGGER: ${MAX_OFFSETS_PER_TRIGGER:-10000}
-  FORECAST_HORIZONS: ${FORECAST_HORIZONS:-1,2,3}
+  # Tham số thuật toán cho phase xử lý dữ liệu; hiện chưa sử dụng.
+  # ANOMALY_Z_THRESHOLD: ${ANOMALY_Z_THRESHOLD:-3.0}
+  # ANOMALY_MIN_SAMPLES: ${ANOMALY_MIN_SAMPLES:-3}
+  # PM25_ALERT_THRESHOLD: ${PM25_ALERT_THRESHOLD:-75}
+  # INTERPOLATION_MAX_GAP_SECONDS: ${INTERPOLATION_MAX_GAP_SECONDS:-10800}
+  # MAX_OFFSETS_PER_TRIGGER: ${MAX_OFFSETS_PER_TRIGGER:-10000}
+  # FORECAST_HORIZONS: ${FORECAST_HORIZONS:-1,2,3}
   PYTHONPATH: /opt/project/spark:/opt/project/spark/ml:/opt/project/spark/streaming
   PYSPARK_PYTHON: python3
 
+
+# Mẫu chung cho master/worker: cùng image, mã nguồn và volume lưu bền.
 x-spark-service: &spark-service
   image: smart-city-spark:3.5.3
   build:
@@ -26,6 +36,8 @@ x-spark-service: &spark-service
     - spark-results:/opt/project/experiments/forecasting
 
 services:
+
+  # HẠ TẦNG CHUNG: nhận/đệm bản tin. Một broker KRaft, không cần ZooKeeper.
   kafka:
     image: apache/kafka:3.8.0
     hostname: kafka
@@ -33,6 +45,8 @@ services:
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
+      # Container kết nối kafka:29092; ứng dụng trên máy host kết nối localhost:9092.
+      # Port 9093 chỉ dành cho điều phối Kafka nội bộ.
       KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
@@ -44,17 +58,22 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_LOG_DIRS: /var/lib/kafka/data
     volumes: ["kafka-data:/var/lib/kafka/data"]
+    # Healthcheck xác nhận service sẵn sàng trước khi các service phụ thuộc khởi động.
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --list >/dev/null 2>&1"]
       interval: 10s
       timeout: 5s
       retries: 15
+
+  # Tạo topic sensor-events một lần. Exited (0) nghĩa là khởi tạo thành công.
   kafka-init:
     image: apache/kafka:3.8.0
     depends_on:
       kafka: {condition: service_healthy}
     entrypoint: ["/opt/kafka/bin/kafka-topics.sh"]
     command: ["--bootstrap-server", "kafka:29092", "--create", "--if-not-exists", "--topic", "sensor-events", "--partitions", "3", "--replication-factor", "1"]
+
+  # DATABASE DỮ LIỆU: PostgreSQL + TimescaleDB, dùng chung cho Spark và Grafana.
   timescaledb:
     image: timescale/timescaledb:latest-pg16
     ports: ["5432:5432"]
@@ -64,12 +83,15 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartcity}
     volumes:
       - timescale-data:/var/lib/postgresql/data
+      # Script này chỉ tự chạy khi volume database còn trống.
       - ./database/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 15
+
+  # Bổ sung schema cho database đã có dữ liệu; chạy xong sẽ Exited (0).
   database-migrate:
     image: postgres:16
     environment: *db-env
@@ -78,62 +100,89 @@ services:
     volumes: ["./database/migrations:/migrations:ro"]
     entrypoint: ["/bin/sh", "-ec"]
     command: ['export PGPASSWORD="$$POSTGRES_PASSWORD"; psql -v ON_ERROR_STOP=1 -h timescaledb -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -f /migrations/002_processing.sql']
+
+  # SPARK MASTER: quản lý cluster, nhận job ở phase sau. UI: localhost:8080.
   spark-master:
     <<: *spark-service
     hostname: spark-master
     command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master", "--host", "spark-master", "--port", "7077", "--webui-port", "8080"]
+    # 7077 là cổng Spark submit; 8080 là giao diện web master.
     ports: ["7077:7077", "8080:8080"]
+    depends_on:
+      kafka-init: {condition: service_completed_successfully}
+      database-migrate: {condition: service_completed_successfully}
     healthcheck:
       test: ["CMD", "python3", "-c", 'import urllib.request; urllib.request.urlopen("http://localhost:8080")']
       interval: 5s
       timeout: 5s
       retries: 15
+
+  # SPARK WORKER: cung cấp CPU/RAM cho cluster. UI: localhost:8081.
   spark-worker:
     <<: *spark-service
     hostname: spark-worker
     environment:
       <<: *spark-env
+      # Tài nguyên dành cho executor, không phải giới hạn toàn bộ Docker Desktop.
       SPARK_WORKER_MEMORY: ${SPARK_WORKER_MEMORY:-3G}
       SPARK_WORKER_CORES: ${SPARK_WORKER_CORES:-3}
     command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "--webui-port", "8081", "spark://spark-master:7077"]
     ports: ["8081:8081"]
+    healthcheck:
+      test: ["CMD", "python3", "-c", 'import json, urllib.request; s=json.load(urllib.request.urlopen("http://localhost:8081/json/")); assert s["masterwebuiurl"]']
+      interval: 10s
+      timeout: 5s
+      retries: 15
     depends_on:
       spark-master: {condition: service_healthy}
-  streaming:
-    <<: *spark-service
-    hostname: streaming
-    environment:
-      <<: *spark-env
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-    command: ["/opt/spark/bin/spark-submit", "--master", "spark://spark-master:7077", "--conf", "spark.driver.host=streaming", "--conf", "spark.driver.bindAddress=0.0.0.0", "--conf", "spark.cores.max=1", "--conf", "spark.sql.shuffle.partitions=3", "/opt/project/spark/streaming/streaming_job.py"]
-    depends_on:
-      spark-worker: {condition: service_started}
-      kafka-init: {condition: service_completed_successfully}
-      database-migrate: {condition: service_completed_successfully}
-    restart: on-failure
-  tests:
-    <<: *spark-service
-    hostname: pipeline-tests
-    environment:
-      <<: *spark-env
-      TEST_DATABASE: "1"
-    entrypoint: ["/opt/spark/bin/spark-submit"]
-    command: ["--master", "local[2]", "/opt/project/tests/test_pipeline.py"]
-    depends_on:
-      database-migrate: {condition: service_completed_successfully}
-    profiles: ["manual"]
-  producer:
-    build:
-      context: .
-      dockerfile: docker/producer.Dockerfile
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      KAFKA_TOPIC: sensor-events
-      EVENTS_PER_SECOND: ${EVENTS_PER_SECOND:-500}
-    volumes: ["./data:/opt/project/data", "./experiments/throughput:/opt/project/experiments/throughput"]
-    depends_on:
-      kafka-init: {condition: service_completed_successfully}
-    profiles: ["manual"]
+
+  # NGOÀI PHẠM VI PHASE 1: giữ cấu hình tham khảo, comment toàn bộ service.
+  # Muốn sử dụng ở phase sau: bỏ comment service cần dùng và bật profile tương ứng.
+
+  # Member 1: xử lý luồng cảm biến; bật lại khi tích hợp pipeline.
+  # streaming:
+  #   <<: *spark-service
+  #   hostname: streaming
+  #   environment:
+  #     <<: *spark-env
+  #     KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+  #   command: ["/opt/spark/bin/spark-submit", "--master", "spark://spark-master:7077", "--conf", "spark.driver.host=streaming", "--conf", "spark.driver.bindAddress=0.0.0.0", "--conf", "spark.cores.max=1", "--conf", "spark.sql.shuffle.partitions=3", "/opt/project/spark/streaming/streaming_job.py"]
+  #   depends_on:
+  #     spark-worker: {condition: service_started}
+  #     kafka-init: {condition: service_completed_successfully}
+  #     database-migrate: {condition: service_completed_successfully}
+  #   restart: on-failure
+  #   profiles: ["pipeline"]
+
+  # Kiểm thử full luồng: dành cho phase sau.
+  # tests:
+  #   <<: *spark-service
+  #   hostname: pipeline-tests
+  #   environment:
+  #     <<: *spark-env
+  #     TEST_DATABASE: "1"
+  #   entrypoint: ["/opt/spark/bin/spark-submit"]
+  #   command: ["--master", "local[2]", "/opt/project/tests/test_pipeline.py"]
+  #   depends_on:
+  #     database-migrate: {condition: service_completed_successfully}
+  #   profiles: ["manual"]
+
+  # Member 1: phát dữ liệu cảm biến; phase nền tảng chưa cần chạy.
+  # producer:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/producer.Dockerfile
+  #   environment:
+  #     KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+  #     KAFKA_TOPIC: sensor-events
+  #     EVENTS_PER_SECOND: ${EVENTS_PER_SECOND:-500}
+  #   volumes: ["./data:/opt/project/data", "./experiments/throughput:/opt/project/experiments/throughput"]
+  #   depends_on:
+  #     kafka-init: {condition: service_completed_successfully}
+  #   profiles: ["manual"]
+
+
+  # khangtna — GRAFANA: giao diện dashboard, tự nạp datasource và dashboard từ file.
   grafana:
     image: grafana/grafana:11.2.0
     ports: ["3000:3000"]
@@ -147,18 +196,28 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       database-migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  # DATABASE RIÊNG CỦA AIRFLOW: lưu lịch DAG, trạng thái task và tài khoản.
   airflow-db:
     image: postgres:16
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
       POSTGRES_DB: airflow
+    # Không publish port ra host để tránh trùng 5432 của TimescaleDB.
     volumes: ["airflow-db-data:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
       interval: 5s
       timeout: 5s
       retries: 15
+
+  # khangtna — AIRFLOW INIT: tạo metadata, tài khoản admin và giữ DAG Paused.
   airflow-init:
     image: smart-city-airflow:2.10.2
     build:
@@ -171,7 +230,8 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      # Phase hiện tại chỉ kiểm tra công cụ; DAG mới tạo luôn ở trạng thái Paused.
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
       AIRFLOW__CORE__PARALLELISM: "2"
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-local-smartcity-demo-change-me}
       AIRFLOW_CONN_SPARK_DEFAULT: '{"conn_type":"spark","host":"spark://spark-master","port":7077}'
@@ -189,6 +249,10 @@ services:
         if ! airflow users list --output json | python -c 'import json,sys; sys.exit(not any(u["username"] == "admin" for u in json.load(sys.stdin)))'; then
           airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com
         fi
+        # Áp dụng Paused cả với DAG đã lưu trong metadata từ lần chạy trước.
+        python /opt/project/airflow/pause_pipeline.py
+
+  # AIRFLOW WEBSERVER: giao diện quản trị. Host 8088 chuyển vào container 8080.
   airflow-webserver:
     image: smart-city-airflow:2.10.2
     environment: *airflow-env
@@ -197,23 +261,50 @@ services:
     command: webserver
     depends_on:
       airflow-init: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c", 'import json, urllib.request; s=json.load(urllib.request.urlopen("http://localhost:8080/health")); assert s["metadatabase"]["status"] == "healthy"']
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 10
+
+  # AIRFLOW SCHEDULER: theo dõi lịch và heartbeat; DAG đang Paused nên chưa chạy nghiệp vụ.
   airflow-scheduler:
     image: smart-city-airflow:2.10.2
     hostname: airflow-scheduler
     environment: *airflow-env
     volumes: *airflow-volumes
     command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 15s
+      start_period: 60s
+      retries: 5
     depends_on:
       airflow-init: {condition: service_completed_successfully}
-      spark-worker: {condition: service_started}
+      spark-worker: {condition: service_healthy}
       database-migrate: {condition: service_completed_successfully}
 
+# Named volumes: dữ liệu còn nguyên sau docker-compose down (không dùng -v).
 volumes:
   kafka-data:
   timescale-data:
   grafana-data:
   airflow-db-data:
   airflow-logs:
-  spark-checkpoints:
-  spark-models:
-  spark-results:
+  spark-checkpoints:  # Chuẩn bị cho checkpoint streaming ở phase sau.
+  spark-models:       # Chuẩn bị nơi lưu mô hình của khangtna.
+  spark-results:      # Chuẩn bị nơi lưu kết quả đánh giá dự báo.
+
+# LINK / PORT TRUY CẬP TỪ MÁY HOST
+# Airflow        http://localhost:8088      admin / admin
+# Grafana        http://localhost:3000      admin / GRAFANA_ADMIN_PASSWORD (mặc định admin)
+# Spark master   http://localhost:8080      Không yêu cầu đăng nhập
+# Spark worker   http://localhost:8081      Không yêu cầu đăng nhập
+# TimescaleDB    localhost:5432             Dùng DBeaver/psql, không có giao diện web
+#                Database/user/password lấy từ .env (mặc định đều là smartcity).
+# Kafka          localhost:9092             Dùng Kafka client, không có giao diện web
+# Spark submit   spark://localhost:7077     Cổng RPC, không phải giao diện web
+# Nội bộ Docker: kafka:29092, timescaledb:5432, airflow-db:5432, spark-master:7077.
+# airflow-db và airflow-scheduler không publish port riêng ra máy host.

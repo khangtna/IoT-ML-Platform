@@ -7,7 +7,7 @@ CONF = {"spark.driver.host": "airflow-scheduler", "spark.driver.bindAddress": "0
         "spark.cores.max": "2", "spark.sql.shuffle.partitions": "3"}
 
 with DAG(dag_id="pm25_forecast_pipeline", start_date=datetime(2026, 1, 1),
-         schedule="@daily", catchup=False, max_active_runs=1,
+         schedule="@daily", catchup=False, max_active_runs=1, is_paused_upon_creation=True,
          default_args={"retries": 1, "retry_delay": timedelta(minutes=2)},
          tags=["smart-city", "pm25"]) as dag:
     aggregate = SparkSubmitOperator(

@@ -2,7 +2,18 @@
 
 Đề tài 4 môn cao học Big Data: hệ thống giám sát môi trường và dự báo PM2.5 từ cảm biến IoT. Triển khai nhánh **môi trường** của đề tài, dùng Kafka, Spark, Airflow, TimescaleDB và Grafana.
 
-## Scope
+## Phase hiện tại: Member 2 — dựng nền tảng
+
+Mục tiêu hiện tại là khởi động và kiểm tra các công cụ bằng Docker Compose. Phần việc của bạn là **Member 2**: Spark MLlib, Airflow, Grafana; cùng cấu hình hạ tầng và database dùng chung.
+
+- Khởi động Kafka, TimescaleDB, Spark master/worker, Airflow metadata DB/webserver/scheduler và Grafana.
+- Tạo topic Kafka, schema database, tài khoản Airflow; provision datasource/dashboard Grafana.
+- Kiểm tra healthcheck, Spark worker đăng ký với master và truy cập được các giao diện.
+- DAG `pm25_forecast_pipeline` ở trạng thái **Paused**; producer, streaming và test được comment trong Compose để dành cho phase sau.
+
+Mã nguồn pipeline đã có trong repo được giữ để dùng cho phase sau. Hoàn thành phase này được xác nhận bằng trạng thái nền tảng; chưa nghiệm thu luồng tổng hợp, huấn luyện, dự báo hoặc hiệu năng xử lý.
+
+## Scope tổng thể của đề tài
 - Environmental Monitoring
 - Dataset: Beijing Multi-Site Air-Quality Data
 - Target: PM2.5
@@ -33,7 +44,9 @@ Airflow -> Spark MLlib (đọc TimescaleDB.sensor_metrics) -> TimescaleDB.pm25_f
 
 Hình Draw.io là sơ đồ định hướng ban đầu. Bản triển khai hiện dùng TimescaleDB, có dự báo **+1/+2/+3 giờ** và job tổng hợp cuối ngày. Anomaly Detection nằm trong streaming job. Chi tiết trạng thái qua nhiều micro-batch, các bảng dữ liệu và luồng triển khai nằm trong [kiến trúc triển khai](docs/architecture.md).
 
-## Đối chiếu yêu cầu đề tài
+## Đối chiếu yêu cầu đề tài — định hướng các phase sau
+
+Bảng dưới mô tả phần chức năng trong mã nguồn; không phải tiêu chí nghiệm thu phase dựng nền tảng.
 
 | Yêu cầu trong `de-tai.md` | Phần triển khai |
 | --- | --- |
@@ -144,81 +157,80 @@ Dữ liệu được tổng hợp về giờ đã hoàn tất; timestamp của f
 Feature gồm PM2.5, lag 1/2/3 giờ, giờ trong ngày và ngày trong tuần. Bỏ các giá trị PM2.5 nội suy hai chiều khỏi dữ liệu ML để tránh dùng thông tin tương lai. Chia khoảng 80/20 theo thời gian; nhãn của tập train phải kết thúc trước holdout. Chọn LR/RF theo RMSE, ghi MAE/RMSE/R², refit trên toàn bộ lịch sử đủ nhãn rồi dự báo từ feature mới nhất của từng trạm. Mô hình lưu theo thời điểm chạy trong volume `spark-models`.
 
 ## Team ownership
-- Member 1: `producer/`, `spark/streaming/`
-- Member 2: `spark/ml/`, `airflow/`, `grafana/`
-- Shared: `database/`, `docker-compose.yml`, `README.md`, `docs/`
 
-## Quick start
-
-Cần Docker Desktop đang chạy; cấu hình hiện tại nên dành khoảng 8 GB RAM cho Docker. Build lần đầu cần truy cập Docker Hub, PyPI và Maven Central. Python 3.10 được đồng bộ giữa Spark và Airflow; JDBC/Kafka JAR được đóng gói khi build để runtime không phải tải lại.
-
-```bash
-# Chạy từ thư mục dự án
-./scripts/start.sh
-# Tạo dữ liệu demo: 7 ngày, 4 trạm, khoảng cách 1 phút, gửi mục tiêu 500 events/s
-./scripts/run-producer.sh --synthetic --hours 168 --stations 4 --events-per-second 500
-```
-
-Streaming tự chạy như một service. Chờ backlog Kafka được xử lý xong trước khi chạy ML:
-
-```bash
-# Các script tự chọn docker compose hoặc docker-compose;
-# hai lệnh bên dưới dùng docker-compose (đổi thành docker compose nếu cần)
-docker-compose logs --tail 50 streaming
-docker-compose exec -T timescaledb sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT count(*), min(timestamp), max(timestamp) FROM sensor_metrics"'
-./scripts/run-ml.sh
-./scripts/run-daily.sh
-./scripts/export-results.sh
-```
-
-Tổng số dữ liệu demo dự kiến: `168 × 60 × 4 = 40.320` khóa trạm/thời gian. Dữ liệu demo có null và spike cố định để kiểm tra nội suy/cảnh báo. Đây là dữ liệu mô phỏng, không dùng metrics của nó làm kết luận về độ chính xác trên dữ liệu thực.
-
-| Giao diện | Địa chỉ | Đăng nhập mặc định |
+| Thành viên | Phạm vi chính | Trách nhiệm |
 | --- | --- | --- |
-| Grafana | http://localhost:3000 | admin / admin |
-| Airflow | http://localhost:8088 | admin / admin |
-| Spark master | http://localhost:8080 | Không yêu cầu |
-| Spark worker | http://localhost:8081 | Không yêu cầu |
+| Member 1 | `producer/`, `spark/streaming/` | Thu thập/mô phỏng cảm biến, Kafka producer, làm sạch/nội suy, window và anomaly streaming |
+| Member 2 | `spark/ml/`, `spark/batch/`, `airflow/`, `grafana/` | Tổng hợp ngày, huấn luyện/dự báo, điều phối DAG, dashboard/heatmap |
+| Shared | `database/`, `docker/`, `docker-compose.yml`, `scripts/`, `README.md`, `docs/` | Môi trường chạy, schema/giao tiếp giữa hai thành viên, hướng dẫn tích hợp |
 
-Trong Grafana mở folder **Smart City**: giám sát, cảnh báo, dự báo, heatmap. Chọn trạm và khoảng thời gian phù hợp. Dự báo +1/+2/+3 giờ được tính từ **giờ quan sát cuối cùng**, không từ đồng hồ hiện tại nếu đang replay lịch sử. Alert tự động xét 10 phút event-time gần hiện tại; lịch sử cũ vẫn hiển thị trên dashboard nhưng không kích hoạt alert hiện thời.
+**Ưu tiên của Member 2 trong phase 1:** dựng môi trường Airflow, Spark và Grafana cùng các dependency; chuẩn bị kết nối, volume, healthcheck và tài liệu. Phần producer/streaming do Member 1 phụ trách. Các job nghiệp vụ và kiểm thử full luồng được thực hiện ở phase sau khi thống nhất dữ liệu bàn giao.
 
-Airflow DAG `pm25_forecast_pipeline` được bật, chạy `@daily` theo UTC: `aggregate_daily → train_and_forecast`. Có thể trigger thủ công sau khi nạp đủ lịch sử; DAG dùng `data_interval_start/end` và retry một lần. Thiếu dữ liệu huấn luyện sẽ báo lỗi rõ ràng.
+## Quick start — chỉ khởi động nền tảng
 
-### Dữ liệu Beijing thực
-
-Tải [Beijing Multi-Site Air Quality từ UCI](https://www.archive.ics.uci.edu/dataset/501/beijing%2Bmulti%2Bsite%2Bair%2Bquality%2Bdata), giải nén CSV vào `data/raw/beijing-multisite/`, rồi chạy:
+Cần Docker Desktop đang chạy. Stack hiện cấu hình một Spark worker 3 GB, cùng Kafka, database, Airflow và Grafana; nên dành khoảng 8 GB RAM cho Docker. Build lần đầu cần truy cập Docker Hub, PyPI và Maven Central.
 
 ```bash
-./scripts/run-producer.sh --events-per-second 500
+cd /Users/khangtna/mydata/PTIT/master/hk1/big-data/tieu-luan/smart-city-iot-bigdata-complete
+./scripts/start.sh
 ```
 
-Producer merge các file theo timestamp để các trạm được replay cùng thời gian. CSV từng trạm phải được sắp tăng dần theo thời gian. Dataset có 420.768 bản ghi theo giờ tại 12 trạm (2013–2017); cần chọn khoảng lịch sử tương ứng trong Grafana. Tần suất gốc 1 giờ không đủ mẫu cho Z-score cửa sổ 30 phút; dùng demo 1 phút để minh họa thuật toán này, không coi tốc độ replay là tần suất đo.
+Script tạo `.env` từ `.env.example` nếu chưa có, build image, khởi động danh sách công cụ nền tảng và chờ healthcheck tối đa 240 giây. Script tự chọn `docker compose` hoặc `docker-compose`. Có thể dùng trực tiếp:
 
-### Database có sẵn và chạy lại
+```bash
+docker-compose up -d --build
+docker-compose ps -a
+```
 
-Service `database-migrate` áp dụng migration bổ sung, giữ dữ liệu hiện có. `init.sql` chỉ tự chạy khi tạo volume mới. Các file `schema_*.sql` là trích đoạn schema ban đầu; dùng `init.sql` và migration làm nguồn schema triển khai.
+Lệnh Compose mặc định chỉ khởi động dịch vụ nền tảng. Toàn bộ service `streaming`, `producer`, `tests` và các tham số thuật toán chưa dùng được comment trong `docker-compose.yml`. Muốn dùng các script nghiệp vụ ở phase sau, cần bỏ comment service/tham số liên quan và bật profile tương ứng (`pipeline` hoặc `manual`).
 
-Checkpoint mới `/opt/checkpoints/smart-city-v2` đọc Kafka từ earliest ở lần đầu. Restart dùng offset trong checkpoint. Sink upsert theo khóa nghiệp vụ nên replay không tạo dòng trùng. Không chạy hai streaming driver dùng cùng checkpoint. Để dừng mà giữ dữ liệu:
+| Thành phần | Truy cập từ máy host | Trạng thái cần đạt |
+| --- | --- | --- |
+| Kafka | `localhost:9092` | Healthy; topic `sensor-events` có 3 partitions |
+| TimescaleDB | `localhost:5432` | Healthy; có database/schema Smart City |
+| Spark master | http://localhost:8080 | Healthy; worker hiển thị Alive |
+| Spark worker | http://localhost:8081 | Healthy; đã kết nối master |
+| Airflow webserver | http://localhost:8088 | Healthy; đăng nhập `admin/admin` |
+| Airflow scheduler | Không có giao diện riêng | Healthy; heartbeat hoạt động |
+| Grafana | http://localhost:3000 | Healthy; đăng nhập `admin/admin` mặc định |
+
+Trong Grafana, datasource **TimescaleDB** được cấu hình từ biến môi trường và folder **Smart City** có dashboard giám sát, cảnh báo, dự báo, heatmap. Dashboard có thể hiển thị **No data** khi chưa nạp dữ liệu; đây là trạng thái bình thường ở phase nền tảng.
+
+Trong Airflow, DAG `pm25_forecast_pipeline` được nạp ở trạng thái **Paused**. `airflow-init` cũng đưa DAG đã tồn tại trong database về Paused khi khởi tạo stack. Chỉ bật DAG khi chuyển sang phase chạy nghiệp vụ; dừng DAG không tự hủy task đã được chạy thủ công từ trước.
+
+Ba service `kafka-init`, `database-migrate`, `airflow-init` là tác vụ khởi tạo một lần: **Exited (0)** là thành công, không phải lỗi. Các service còn lại phải Up/Healthy. Xem [checklist nền tảng](docs/report/validation.md).
+
+### Xem trạng thái và log
+
+```bash
+docker-compose ps -a
+docker-compose logs --tail 100 airflow-init airflow-webserver airflow-scheduler
+docker-compose logs --tail 100 spark-master spark-worker grafana
+```
+
+### Cấu hình và dữ liệu lưu bền
+
+- `.env`: tài khoản/database, mật khẩu Grafana, tài nguyên Spark; xem `.env.example`.
+- Kafka nội bộ dùng `kafka:29092`; client chạy trên máy host dùng `localhost:9092`.
+- Spark/Airflow cùng Python 3.10 và Spark 3.5.3. JDBC/Kafka JAR được đóng gói vào image khi build.
+- TimescaleDB chạy `init.sql` khi tạo volume mới; `database-migrate` bổ sung schema cho volume đã tồn tại.
+- Named volumes lưu dữ liệu Kafka/database/Grafana, log Airflow và checkpoint/model/results Spark. Các volume và dữ liệu từ lần chạy trước được giữ lại.
+- Nếu Docker tải thư viện bị timeout dù host có mạng, kiểm tra proxy/mạng Docker Desktop; có thể truyền proxy hợp lệ qua `docker-compose build --build-arg HTTPS_PROXY=...`.
+
+### Dừng nền tảng
 
 ```bash
 ./scripts/stop.sh
 ```
 
-### Kiểm thử và kết quả thí nghiệm
+Lệnh dừng container và giữ named volumes để lần sau tiếp tục sử dụng.
 
-```bash
-./scripts/test.sh
-# Benchmark đầu vào lớn hơn: 1.008.000 events, 100 trạm, 7 ngày
-./scripts/run-producer.sh --synthetic --hours 168 --stations 100 --events-per-second 1000
-```
+## Phase tiếp theo của Member 2
 
-Test tích hợp tạo database tạm `smartcity_test_<pid>` và xóa riêng database đó khi xong. Xem [kế hoạch nghiệm thu](docs/report/validation.md) để đo throughput, dữ liệu đến muộn, khôi phục và chất lượng dự báo. Các lệnh benchmark triệu bản tin có chủ đích và cần theo dõi bộ nhớ/backlog; chưa được coi là đạt nếu chưa có số đo.
+1. Thống nhất schema `sensor_metrics`, chất lượng dữ liệu và thời gian sự kiện với Member 1.
+2. Kiểm tra job tổng hợp ngày trong `spark/batch/`.
+3. Hoàn thiện/kiểm thử LR và Random Forest dự báo +1/+2/+3 giờ trong `spark/ml/`.
+4. Chạy DAG tổng hợp → huấn luyện → dự báo trên Airflow.
+5. Nghiệm thu dashboard/heatmap và đánh giá MAE/RMSE/R² trên dữ liệu thật.
 
-## Giới hạn triển khai
-
-- Đây là PoC một máy, Kafka replication factor 1, một Spark worker và một TimescaleDB; chưa có HA hay benchmark chứng minh quy mô triệu bản tin.
-- Lịch sử được giữ ở TimescaleDB để recompute một khoảng event-time có giới hạn qua nhiều batch. Bản tin đến muộn có thể sửa kết quả nội suy và cửa sổ cũ. Mỗi partition ghi transaction riêng; dashboard có thể thấy dữ liệu cập nhật dần, không phải một transaction cho cả batch.
-- Nội suy chỉ lấp giá trị null của bản tin đã có hai đầu mút đủ gần. Không tự sinh bản tin cho khoảng sensor hoàn toàn mất kết nối; không ngoại suy đầu/cuối chuỗi. Z-score cần ít nhất 3 điểm và độ lệch chuẩn >0; ngưỡng 75 µg/m³ chỉ là cấu hình demo.
-- Heatmap thể hiện phân bố nồng độ theo thời gian. Dataset/schema hiện chưa có tọa độ để làm bản đồ địa lý.
-- Tổng hợp ngày được cập nhật khi DAG chạy cho khoảng ngày đó; dữ liệu đến muộn của ngày cũ cần chạy lại `run-daily.sh --start ... --end ...`. ML hiện dùng một mô hình chung cho các trạm và đánh giá một holdout theo thời gian.
-- Khi Docker không ra Internet, cần sửa cấu hình mạng/proxy của Docker hoặc truyền proxy qua `docker-compose build --build-arg HTTPS_PROXY=...`; runtime của dự án không phụ thuộc proxy tải thư viện.
+Các script `run-ml.sh`, `run-daily.sh`, `run-producer.sh`, `run-streaming.sh`, `test.sh` phục vụ phase sau; chúng không được gọi bởi `start.sh`. Chạy đủ luồng và benchmark triệu bản tin không thuộc nghiệm thu phase hiện tại.
