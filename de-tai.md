@@ -1,8 +1,5 @@
 
-Đề tài 4: 
-- Xây dựng hệ thống giám sát và dự báo ô nhiễm môi trường / giao thông
-thông minh từ cảm biến IoT (Smart City IoT Platform for Environmental & Traffic
-Forecasting)
+### Đề tài 4: Xây dựng hệ thống giám sát và dự báo ô nhiễm môi trường / giao thông thông minh từ cảm biến IoT (Smart City IoT Platform for Environmental & Traffic Forecasting)
 
 - Mô tả bài toán: Tiếp nhận và phân tích hàng triệu gói tin chuỗi thời gian (timeseries) phát ra từ mạng lưới trạm cảm biến môi trường (chỉ số PM2.5, CO2, nhiệt
 độ, độ ẩm) hoặc camera giám sát lưu lượng giao thông đô thị, từ đó đưa ra cảnh
