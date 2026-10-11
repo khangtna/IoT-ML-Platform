@@ -2,17 +2,6 @@
 
 Đề tài 4 môn cao học Big Data: hệ thống giám sát môi trường và dự báo PM2.5 từ cảm biến IoT. Triển khai nhánh **môi trường** của đề tài, dùng Kafka, Spark, Airflow, TimescaleDB và Grafana.
 
-## Phase hiện tại: Member 2 — dựng nền tảng
-
-Mục tiêu hiện tại là khởi động và kiểm tra các công cụ bằng Docker Compose. Phần việc của bạn là **Member 2**: Spark MLlib, Airflow, Grafana; cùng cấu hình hạ tầng và database dùng chung.
-
-- Khởi động Kafka, TimescaleDB, Spark master/worker, Airflow metadata DB/webserver/scheduler và Grafana.
-- Tạo topic Kafka, schema database, tài khoản Airflow; provision datasource/dashboard Grafana.
-- Kiểm tra healthcheck, Spark worker đăng ký với master và truy cập được các giao diện.
-- DAG `pm25_forecast_pipeline` ở trạng thái **Paused**; producer, streaming và test được comment trong Compose để dành cho phase sau.
-
-Mã nguồn pipeline đã có trong repo được giữ để dùng cho phase sau. Hoàn thành phase này được xác nhận bằng trạng thái nền tảng; chưa nghiệm thu luồng tổng hợp, huấn luyện, dự báo hoặc hiệu năng xử lý.
-
 ## Scope tổng thể của đề tài
 - Environmental Monitoring
 - Dataset: Beijing Multi-Site Air-Quality Data
@@ -44,9 +33,9 @@ Airflow -> Spark MLlib (đọc TimescaleDB.sensor_metrics) -> TimescaleDB.pm25_f
 
 Hình Draw.io là sơ đồ định hướng ban đầu. Bản triển khai hiện dùng TimescaleDB, có dự báo **+1/+2/+3 giờ** và job tổng hợp cuối ngày. Anomaly Detection nằm trong streaming job. Chi tiết trạng thái qua nhiều micro-batch, các bảng dữ liệu và luồng triển khai nằm trong [kiến trúc triển khai](docs/architecture.md).
 
-## Đối chiếu yêu cầu đề tài — định hướng các phase sau
+## Đối chiếu yêu cầu đề tài
 
-Bảng dưới mô tả phần chức năng trong mã nguồn; không phải tiêu chí nghiệm thu phase dựng nền tảng.
+Bảng dưới liên hệ yêu cầu đề tài với các thành phần trong mã nguồn.
 
 | Yêu cầu trong `de-tai.md` | Phần triển khai |
 | --- | --- |
@@ -60,7 +49,7 @@ Bảng dưới mô tả phần chức năng trong mã nguồn; không phải ti�
 | Time-series database | TimescaleDB hypertables; upsert theo khóa nghiệp vụ để chạy lại an toàn |
 | Grafana và heatmap | 4 dashboard, lọc theo trạm, heatmap phân bố nồng độ theo thời gian |
 
-500 events/s là mục tiêu đầu vào cần đo trên máy chạy; chưa đồng nghĩa throughput xử lý Spark đạt 500 events/s. Xem [quy trình đo và nghiệm thu](docs/report/validation.md).
+500 events/s là mục tiêu đầu vào cần đo trên máy chạy; chưa đồng nghĩa throughput xử lý Spark đạt 500 events/s.
 
 ## Cấu trúc thư mục
 
@@ -164,9 +153,7 @@ Feature gồm PM2.5, lag 1/2/3 giờ, giờ trong ngày và ngày trong tuần. 
 | Member 2 | `spark/ml/`, `spark/batch/`, `airflow/`, `grafana/` | Tổng hợp ngày, huấn luyện/dự báo, điều phối DAG, dashboard/heatmap |
 | Shared | `database/`, `docker/`, `docker-compose.yml`, `scripts/`, `README.md`, `docs/` | Môi trường chạy, schema/giao tiếp giữa hai thành viên, hướng dẫn tích hợp |
 
-**Ưu tiên của Member 2 trong phase 1:** dựng môi trường Airflow, Spark và Grafana cùng các dependency; chuẩn bị kết nối, volume, healthcheck và tài liệu. Phần producer/streaming do Member 1 phụ trách. Các job nghiệp vụ và kiểm thử full luồng được thực hiện ở phase sau khi thống nhất dữ liệu bàn giao.
-
-## Quick start — chỉ khởi động nền tảng
+## Khởi động môi trường Docker
 
 Cần Docker Desktop đang chạy. Stack hiện cấu hình một Spark worker 3 GB, cùng Kafka, database, Airflow và Grafana; nên dành khoảng 8 GB RAM cho Docker. Build lần đầu cần truy cập Docker Hub, PyPI và Maven Central.
 
@@ -182,25 +169,27 @@ docker-compose up -d --build
 docker-compose ps -a
 ```
 
-Lệnh Compose mặc định chỉ khởi động dịch vụ nền tảng. Toàn bộ service `streaming`, `producer`, `tests` và các tham số thuật toán chưa dùng được comment trong `docker-compose.yml`. Muốn dùng các script nghiệp vụ ở phase sau, cần bỏ comment service/tham số liên quan và bật profile tương ứng (`pipeline` hoặc `manual`).
+Lệnh Compose mặc định chỉ khởi động dịch vụ nền tảng. Toàn bộ service `streaming`, `producer`, `tests` và các tham số thuật toán chưa dùng được comment trong `docker-compose.yml`. Để dùng các script nghiệp vụ, bỏ comment service/tham số liên quan và bật profile tương ứng (`pipeline` hoặc `manual`).
 
-| Thành phần | Truy cập từ máy host | Trạng thái cần đạt |
+| Thành phần | Link / địa chỉ từ máy host | Công dụng / đăng nhập |
 | --- | --- | --- |
-| Kafka | `localhost:9092` | Healthy; topic `sensor-events` có 3 partitions |
-| TimescaleDB | `localhost:5432` | Healthy; có database/schema Smart City |
-| Spark master | http://localhost:8080 | Healthy; worker hiển thị Alive |
-| Spark worker | http://localhost:8081 | Healthy; đã kết nối master |
-| Airflow webserver | http://localhost:8088 | Healthy; đăng nhập `admin/admin` |
-| Airflow scheduler | Không có giao diện riêng | Healthy; heartbeat hoạt động |
-| Grafana | http://localhost:3000 | Healthy; đăng nhập `admin/admin` mặc định |
+| Kafka | `localhost:9092` | Kết nối Kafka client; không có giao diện web |
+| TimescaleDB | `localhost:5432` | Kết nối DBeaver/psql; cấu hình trong `.env` |
+| Spark master | http://localhost:8080 | Giao diện quản lý cluster |
+| Spark worker | http://localhost:8081 | Giao diện worker |
+| Spark RPC | `localhost:7077` | Cổng nhận job; không phải giao diện web |
+| Airflow | http://localhost:8088 | Quản trị DAG; mặc định `admin/admin` |
+| Grafana | http://localhost:3000 | Dashboard; mặc định `admin/admin` |
 
-Trong Grafana, datasource **TimescaleDB** được cấu hình từ biến môi trường và folder **Smart City** có dashboard giám sát, cảnh báo, dự báo, heatmap. Dashboard có thể hiển thị **No data** khi chưa nạp dữ liệu; đây là trạng thái bình thường ở phase nền tảng.
+Airflow scheduler và database metadata của Airflow chỉ dùng trong mạng Docker, không có port truy cập riêng từ máy host.
 
-Trong Airflow, DAG `pm25_forecast_pipeline` được nạp ở trạng thái **Paused**. `airflow-init` cũng đưa DAG đã tồn tại trong database về Paused khi khởi tạo stack. Chỉ bật DAG khi chuyển sang phase chạy nghiệp vụ; dừng DAG không tự hủy task đã được chạy thủ công từ trước.
+Trong Grafana, datasource **TimescaleDB** được cấu hình từ biến môi trường và folder **Smart City** có dashboard giám sát, cảnh báo, dự báo, heatmap. Dashboard có thể hiển thị **No data** khi chưa nạp dữ liệu; đây là trạng thái bình thường khi database chưa có bản ghi phù hợp.
 
-Ba service `kafka-init`, `database-migrate`, `airflow-init` là tác vụ khởi tạo một lần: **Exited (0)** là thành công, không phải lỗi. Các service còn lại phải Up/Healthy. Xem [checklist nền tảng](docs/report/validation.md).
+Trong Airflow, DAG `pm25_forecast_pipeline` được nạp ở trạng thái **Paused**. `airflow-init` cũng đưa DAG đã tồn tại trong database về Paused khi khởi tạo stack. Bật DAG khi muốn chạy lịch nghiệp vụ; tạm dừng DAG không tự hủy task đang chạy.
 
-### Xem trạng thái và log
+Ba service `kafka-init`, `database-migrate`, `airflow-init` là tác vụ khởi tạo một lần: **Exited (0)** là thành công, không phải lỗi. Tham khảo [hướng dẫn kiểm tra môi trường](docs/report/validation.md).
+
+### Xem log vận hành
 
 ```bash
 docker-compose ps -a
@@ -224,13 +213,3 @@ docker-compose logs --tail 100 spark-master spark-worker grafana
 ```
 
 Lệnh dừng container và giữ named volumes để lần sau tiếp tục sử dụng.
-
-## Phase tiếp theo của Member 2
-
-1. Thống nhất schema `sensor_metrics`, chất lượng dữ liệu và thời gian sự kiện với Member 1.
-2. Kiểm tra job tổng hợp ngày trong `spark/batch/`.
-3. Hoàn thiện/kiểm thử LR và Random Forest dự báo +1/+2/+3 giờ trong `spark/ml/`.
-4. Chạy DAG tổng hợp → huấn luyện → dự báo trên Airflow.
-5. Nghiệm thu dashboard/heatmap và đánh giá MAE/RMSE/R² trên dữ liệu thật.
-
-Các script `run-ml.sh`, `run-daily.sh`, `run-producer.sh`, `run-streaming.sh`, `test.sh` phục vụ phase sau; chúng không được gọi bởi `start.sh`. Chạy đủ luồng và benchmark triệu bản tin không thuộc nghiệm thu phase hiện tại.

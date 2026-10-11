@@ -1,6 +1,6 @@
 # Kiến trúc triển khai
 
-**Phase hiện tại: nền tảng cho Member 2.** Compose chỉ khởi động công cụ; streaming/producer/test được comment trong Compose, DAG Airflow mặc định Paused. Sơ đồ và thuật toán bên dưới mô tả luồng nghiệp vụ dành cho phase sau.
+Compose mặc định khởi động các công cụ nền tảng; streaming/producer/test được comment và DAG Airflow mặc định Paused. Sơ đồ bên dưới mô tả kiến trúc đầy đủ của hệ thống.
 
 ```mermaid
 flowchart LR

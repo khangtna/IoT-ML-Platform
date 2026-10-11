@@ -1,8 +1,8 @@
-# Checklist phase 1 — nền tảng Member 2
+# Kiểm tra môi trường Docker
 
 ## Phạm vi nghiệm thu
 
-Khởi động công cụ bằng Docker Compose và kiểm tra cấu hình/kết nối. Không gửi dữ liệu mô phỏng, submit Spark job, trigger DAG hoặc chạy test full luồng trong phase này.
+Khởi động công cụ bằng Docker Compose và kiểm tra cấu hình/kết nối. Không gửi dữ liệu mô phỏng, submit Spark job, trigger DAG hoặc chạy test full luồng.
 
 | Hạng mục | Điều kiện đạt |
 | --- | --- |
@@ -27,7 +27,3 @@ docker-compose exec -T airflow-scheduler airflow dags list -o json
 ```
 
 Mở Spark master tại http://localhost:8080, Airflow tại http://localhost:8088 và Grafana tại http://localhost:3000. Dashboard chưa có dữ liệu không phải lỗi nền tảng.
-
-## Các bước để phase sau
-
-Chạy producer/streaming, kiểm thử nội suy và cửa sổ, đánh giá chất lượng dữ liệu, tổng hợp ngày, huấn luyện/dự báo, trigger DAG, benchmark throughput và khả năng phục hồi. Chỉ thực hiện sau khi Member 1 và Member 2 thống nhất dữ liệu bàn giao.
