@@ -1,30 +1,136 @@
 {
-  "title": "PM2.5 by station",
-  "timezone": "browser",
+  "title": "Smart City - Giám sát môi trường",
+  "uid": "smartcity-realtime",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
+  "timezone": "utc",
   "refresh": "10s",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "tags": [
+    "smart-city"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "station",
+        "label": "Trạm",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "TimescaleDB"
+        },
+        "query": "SELECT DISTINCT station_id FROM sensor_metrics ORDER BY station_id",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
   "panels": [
     {
-      "type": "timeseries",
-      "title": "PM2.5 by station",
       "id": 1,
+      "title": "PM2.5 theo trạm",
+      "type": "timeseries",
       "datasource": {
         "type": "postgres",
         "uid": "TimescaleDB"
       },
-      "targets": [
-        {
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT timestamp AS time, station_id AS metric, pm25 AS value FROM sensor_metrics WHERE $__timeFilter(timestamp) ORDER BY timestamp"
-        }
-      ],
       "gridPos": {
         "h": 9,
         "w": 24,
         "x": 0,
         "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT timestamp AS time, station_id AS metric, pm25 AS value FROM sensor_metrics WHERE $__timeFilter(timestamp) AND station_id IN (${station:sqlstring}) ORDER BY time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "concentrationugm3"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "Tumbling 5 phút / Sliding 30 phút",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT window_start AS time, station_id || ' / ' || window_type AS metric, pm25_avg AS value FROM sensor_windows WHERE $__timeFilter(window_start) AND station_id IN (${station:sqlstring}) ORDER BY time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "concentrationugm3"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "Tổng hợp cuối ngày",
+      "type": "table",
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT * FROM daily_summary WHERE $__timeFilter(day) AND station_id IN (${station:sqlstring}) ORDER BY day DESC,station_id"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
       }
     }
   ]

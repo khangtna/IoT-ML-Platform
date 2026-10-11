@@ -5,12 +5,12 @@ datasources:
     type: postgres
     access: proxy
     url: timescaledb:5432
-    user: smartcity
+    user: $POSTGRES_USER
     isDefault: true
     secureJsonData:
-      password: smartcity
+      password: $POSTGRES_PASSWORD
     jsonData:
-      database: smartcity
+      database: $POSTGRES_DB
       sslmode: disable
       postgresVersion: 1600
       timescaledb: true

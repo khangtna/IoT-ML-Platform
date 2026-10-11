@@ -1,3 +1,30 @@
+x-spark-environment: &spark-env
+  KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+  KAFKA_TOPIC: sensor-events
+  JDBC_URL: jdbc:postgresql://timescaledb:5432/${POSTGRES_DB:-smartcity}
+  POSTGRES_USER: ${POSTGRES_USER:-smartcity}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartcity}
+  ANOMALY_Z_THRESHOLD: ${ANOMALY_Z_THRESHOLD:-3.0}
+  ANOMALY_MIN_SAMPLES: ${ANOMALY_MIN_SAMPLES:-3}
+  PM25_ALERT_THRESHOLD: ${PM25_ALERT_THRESHOLD:-75}
+  INTERPOLATION_MAX_GAP_SECONDS: ${INTERPOLATION_MAX_GAP_SECONDS:-10800}
+  MAX_OFFSETS_PER_TRIGGER: ${MAX_OFFSETS_PER_TRIGGER:-10000}
+  FORECAST_HORIZONS: ${FORECAST_HORIZONS:-1,2,3}
+  PYTHONPATH: /opt/project/spark:/opt/project/spark/ml:/opt/project/spark/streaming
+  PYSPARK_PYTHON: python3
+
+x-spark-service: &spark-service
+  image: smart-city-spark:3.5.3
+  build:
+    context: .
+    dockerfile: docker/spark.Dockerfile
+  environment: *spark-env
+  volumes:
+    - ./:/opt/project
+    - spark-checkpoints:/opt/checkpoints
+    - spark-models:/opt/project/models
+    - spark-results:/opt/project/experiments/forecasting
+
 services:
   kafka:
     image: apache/kafka:3.8.0
@@ -6,33 +33,32 @@ services:
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes: ["kafka-data:/var/lib/kafka/data"]
     healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --list >/dev/null 2>&1"]
       interval: 10s
       timeout: 5s
-      retries: 10
-
+      retries: 15
   kafka-init:
     image: apache/kafka:3.8.0
     depends_on:
-      kafka:
-        condition: service_healthy
-    entrypoint: ["/bin/sh","-c"]
-    command: "/opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic sensor-events --partitions 3 --replication-factor 1"
-
+      kafka: {condition: service_healthy}
+    entrypoint: ["/opt/kafka/bin/kafka-topics.sh"]
+    command: ["--bootstrap-server", "kafka:29092", "--create", "--if-not-exists", "--topic", "sensor-events", "--partitions", "3", "--replication-factor", "1"]
   timescaledb:
     image: timescale/timescaledb:latest-pg16
-    hostname: timescaledb
     ports: ["5432:5432"]
-    environment:
+    environment: &db-env
       POSTGRES_DB: ${POSTGRES_DB:-smartcity}
       POSTGRES_USER: ${POSTGRES_USER:-smartcity}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartcity}
@@ -40,75 +66,87 @@ services:
       - timescale-data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-smartcity} -d ${POSTGRES_DB:-smartcity}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
       timeout: 5s
-      retries: 10
-
+      retries: 15
+  database-migrate:
+    image: postgres:16
+    environment: *db-env
+    depends_on:
+      timescaledb: {condition: service_healthy}
+    volumes: ["./database/migrations:/migrations:ro"]
+    entrypoint: ["/bin/sh", "-ec"]
+    command: ['export PGPASSWORD="$$POSTGRES_PASSWORD"; psql -v ON_ERROR_STOP=1 -h timescaledb -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -f /migrations/002_processing.sql']
   spark-master:
-    image: smart-city-spark:3.5.3
-    build:
-      context: .
-      dockerfile: docker/spark.Dockerfile
+    <<: *spark-service
     hostname: spark-master
     command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master", "--host", "spark-master", "--port", "7077", "--webui-port", "8080"]
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      KAFKA_TOPIC: sensor-events
-      JDBC_URL: jdbc:postgresql://timescaledb:5432/smartcity
-      POSTGRES_USER: ${POSTGRES_USER:-smartcity}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartcity}
-      ANOMALY_Z_THRESHOLD: ${ANOMALY_Z_THRESHOLD:-3.0}
-    ports: ["7077:7077","8080:8080"]
-    volumes:
-      - ./:/opt/project
-      - spark-checkpoints:/opt/checkpoints
-    depends_on:
-      kafka: {condition: service_healthy}
-      timescaledb: {condition: service_healthy}
-
+    ports: ["7077:7077", "8080:8080"]
+    healthcheck:
+      test: ["CMD", "python3", "-c", 'import urllib.request; urllib.request.urlopen("http://localhost:8080")']
+      interval: 5s
+      timeout: 5s
+      retries: 15
   spark-worker:
-    image: smart-city-spark:3.5.3
-    build:
-      context: .
-      dockerfile: docker/spark.Dockerfile
+    <<: *spark-service
     hostname: spark-worker
-    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "--webui-port", "8081", "spark://spark-master:7077"]
     environment:
-      SPARK_WORKER_MEMORY: 2G
-      SPARK_WORKER_CORES: 2
+      <<: *spark-env
+      SPARK_WORKER_MEMORY: ${SPARK_WORKER_MEMORY:-3G}
+      SPARK_WORKER_CORES: ${SPARK_WORKER_CORES:-3}
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "--webui-port", "8081", "spark://spark-master:7077"]
     ports: ["8081:8081"]
-    volumes:
-      - ./:/opt/project
-    depends_on: [spark-master]
-
+    depends_on:
+      spark-master: {condition: service_healthy}
+  streaming:
+    <<: *spark-service
+    hostname: streaming
+    environment:
+      <<: *spark-env
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    command: ["/opt/spark/bin/spark-submit", "--master", "spark://spark-master:7077", "--conf", "spark.driver.host=streaming", "--conf", "spark.driver.bindAddress=0.0.0.0", "--conf", "spark.cores.max=1", "--conf", "spark.sql.shuffle.partitions=3", "/opt/project/spark/streaming/streaming_job.py"]
+    depends_on:
+      spark-worker: {condition: service_started}
+      kafka-init: {condition: service_completed_successfully}
+      database-migrate: {condition: service_completed_successfully}
+    restart: on-failure
+  tests:
+    <<: *spark-service
+    hostname: pipeline-tests
+    environment:
+      <<: *spark-env
+      TEST_DATABASE: "1"
+    entrypoint: ["/opt/spark/bin/spark-submit"]
+    command: ["--master", "local[2]", "/opt/project/tests/test_pipeline.py"]
+    depends_on:
+      database-migrate: {condition: service_completed_successfully}
+    profiles: ["manual"]
   producer:
     build:
       context: .
       dockerfile: docker/producer.Dockerfile
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KAFKA_TOPIC: sensor-events
       EVENTS_PER_SECOND: ${EVENTS_PER_SECOND:-500}
-    volumes:
-      - ./data:/opt/project/data
+    volumes: ["./data:/opt/project/data", "./experiments/throughput:/opt/project/experiments/throughput"]
     depends_on:
       kafka-init: {condition: service_completed_successfully}
     profiles: ["manual"]
-
   grafana:
     image: grafana/grafana:11.2.0
     ports: ["3000:3000"]
     environment:
+      <<: *db-env
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
-      timescaledb: {condition: service_healthy}
-
+      database-migrate: {condition: service_completed_successfully}
   airflow-db:
     image: postgres:16
     environment:
@@ -118,57 +156,64 @@ services:
     volumes: ["airflow-db-data:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 10
-
+      retries: 15
   airflow-init:
+    image: smart-city-airflow:2.10.2
     build:
       context: .
       dockerfile: docker/airflow.Dockerfile
     depends_on:
       airflow-db: {condition: service_healthy}
     environment: &airflow-env
+      <<: *spark-env
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
-      AIRFLOW_CONN_SPARK_DEFAULT: spark://spark-master:7077
-      JDBC_URL: jdbc:postgresql://timescaledb:5432/smartcity
-      POSTGRES_USER: ${POSTGRES_USER:-smartcity}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartcity}
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      AIRFLOW__CORE__PARALLELISM: "2"
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-local-smartcity-demo-change-me}
+      AIRFLOW_CONN_SPARK_DEFAULT: '{"conn_type":"spark","host":"spark://spark-master","port":7077}'
     volumes: &airflow-volumes
-      - ./airflow/dags:/opt/airflow/dags
-      - ./airflow/logs:/opt/airflow/logs
-      - ./:/opt/airflow/project
+      - ./airflow/dags:/opt/airflow/dags:ro
+      - airflow-logs:/opt/airflow/logs
+      - ./:/opt/project
+      - spark-models:/opt/project/models
+      - spark-results:/opt/project/experiments/forecasting
     entrypoint: /bin/bash
-    command: ["-c", "airflow db migrate && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com || true"]
-
+    command:
+      - -ec
+      - |
+        airflow db migrate
+        if ! airflow users list --output json | python -c 'import json,sys; sys.exit(not any(u["username"] == "admin" for u in json.load(sys.stdin)))'; then
+          airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com
+        fi
   airflow-webserver:
-    build:
-      context: .
-      dockerfile: docker/airflow.Dockerfile
-    depends_on:
-      airflow-init: {condition: service_completed_successfully}
-      spark-master: {condition: service_started}
+    image: smart-city-airflow:2.10.2
     environment: *airflow-env
     volumes: *airflow-volumes
     ports: ["8088:8080"]
     command: webserver
-
-  airflow-scheduler:
-    build:
-      context: .
-      dockerfile: docker/airflow.Dockerfile
     depends_on:
       airflow-init: {condition: service_completed_successfully}
-      spark-master: {condition: service_started}
+  airflow-scheduler:
+    image: smart-city-airflow:2.10.2
+    hostname: airflow-scheduler
     environment: *airflow-env
     volumes: *airflow-volumes
     command: scheduler
+    depends_on:
+      airflow-init: {condition: service_completed_successfully}
+      spark-worker: {condition: service_started}
+      database-migrate: {condition: service_completed_successfully}
 
 volumes:
+  kafka-data:
   timescale-data:
   grafana-data:
   airflow-db-data:
+  airflow-logs:
   spark-checkpoints:
+  spark-models:
+  spark-results:

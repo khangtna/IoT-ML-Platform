@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
-set -euo pipefail
-docker compose run --rm producer
+source "$(dirname "$0")/compose.sh"
+"${COMPOSE[@]}" run --rm producer "$@"

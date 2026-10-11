@@ -1,3 +1,6 @@
 #!/usr/bin/env bash
-set -euo pipefail
-docker compose exec spark-master /opt/spark/bin/spark-submit --master spark://spark-master:7077 --packages org.postgresql:postgresql:42.7.4 /opt/project/spark/ml/ml_pipeline.py
+source "$(dirname "$0")/compose.sh"
+"${COMPOSE[@]}" exec -T spark-master /opt/spark/bin/spark-submit \
+  --master spark://spark-master:7077 --conf spark.driver.host=spark-master \
+  --conf spark.cores.max=2 --conf spark.sql.shuffle.partitions=3 \
+  /opt/project/spark/ml/ml_pipeline.py "$@"

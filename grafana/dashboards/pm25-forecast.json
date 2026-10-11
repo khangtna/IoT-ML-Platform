@@ -1,30 +1,103 @@
 {
-  "title": "PM2.5 Forecast",
-  "timezone": "browser",
+  "title": "Smart City - Dự báo",
+  "uid": "smartcity-forecast",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
+  "timezone": "utc",
   "refresh": "10s",
+  "time": {
+    "from": "now-7d",
+    "to": "now+3h"
+  },
+  "tags": [
+    "smart-city"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "station",
+        "label": "Trạm",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "TimescaleDB"
+        },
+        "query": "SELECT DISTINCT station_id FROM sensor_metrics ORDER BY station_id",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
   "panels": [
     {
-      "type": "timeseries",
-      "title": "PM2.5 Forecast",
       "id": 1,
+      "title": "Dự báo PM2.5 +1h / +2h / +3h",
+      "type": "timeseries",
       "datasource": {
         "type": "postgres",
         "uid": "TimescaleDB"
       },
-      "targets": [
-        {
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT forecast_time AS time, station_id || ' - ' || model_name AS metric, predicted_pm25 AS value FROM pm25_forecast WHERE $__timeFilter(forecast_time) ORDER BY forecast_time"
-        }
-      ],
       "gridPos": {
         "h": 9,
         "w": 24,
         "x": 0,
         "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT forecast_time AS time, station_id || ' +' || horizon_hours || 'h / ' || model_name AS metric, predicted_pm25 AS value FROM latest_forecasts WHERE $__timeFilter(forecast_time) AND station_id IN (${station:sqlstring}) ORDER BY time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "concentrationugm3"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "Đánh giá holdout theo thời gian",
+      "type": "table",
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT * FROM model_evaluations ORDER BY run_at DESC,horizon_hours,model_name LIMIT 60"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
       }
     }
   ]

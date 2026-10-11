@@ -1,0 +1,8 @@
+{
+  "sent": 40320,
+  "acknowledged": 40320,
+  "seconds": 67.20295786399993,
+  "acknowledged_events_per_second": 599.9735916623856,
+  "target_events_per_second": 600,
+  "synthetic": true
+}

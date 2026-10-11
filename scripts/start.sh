@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-set -euo pipefail
-cp -n .env.example .env 2>/dev/null || true
-docker compose up -d --build
+source "$(dirname "$0")/compose.sh"
+if [[ ! -f .env ]]; then cp .env.example .env; fi
+"${COMPOSE[@]}" up -d --build

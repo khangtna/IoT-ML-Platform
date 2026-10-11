@@ -1,30 +1,103 @@
 {
-  "title": "PM2.5 Z-score",
-  "timezone": "browser",
+  "title": "Smart City - Cảnh báo",
+  "uid": "smartcity-anomaly",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
+  "timezone": "utc",
   "refresh": "10s",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "tags": [
+    "smart-city"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "station",
+        "label": "Trạm",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "TimescaleDB"
+        },
+        "query": "SELECT DISTINCT station_id FROM sensor_metrics ORDER BY station_id",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
   "panels": [
     {
-      "type": "timeseries",
-      "title": "PM2.5 Z-score",
       "id": 1,
+      "title": "Rolling Z-score (30 phút trước)",
+      "type": "timeseries",
       "datasource": {
         "type": "postgres",
         "uid": "TimescaleDB"
       },
-      "targets": [
-        {
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT timestamp AS time, station_id AS metric, pm25_z_score AS value FROM sensor_metrics WHERE $__timeFilter(timestamp) ORDER BY timestamp"
-        }
-      ],
       "gridPos": {
         "h": 9,
         "w": 24,
         "x": 0,
         "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT timestamp AS time, station_id AS metric, pm25_z_score AS value FROM sensor_metrics WHERE $__timeFilter(timestamp) AND station_id IN (${station:sqlstring}) ORDER BY time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "Cảnh báo bất thường và vượt ngưỡng cấu hình",
+      "type": "table",
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT * FROM active_alerts WHERE $__timeFilter(timestamp) AND station_id IN (${station:sqlstring}) ORDER BY timestamp DESC LIMIT 1000"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
       }
     }
   ]

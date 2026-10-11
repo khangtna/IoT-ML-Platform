@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
-set -euo pipefail
-docker compose down
+source "$(dirname "$0")/compose.sh"
+"${COMPOSE[@]}" down
