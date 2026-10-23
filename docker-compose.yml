@@ -184,7 +184,7 @@ services:
   #   profiles: ["manual"]
 
 
-  # khangtna — GRAFANA: giao diện dashboard, tự nạp datasource và dashboard từ file.
+  # GRAFANA: giao diện dashboard, tự nạp datasource và dashboard từ file.
   grafana:
     image: grafana/grafana:11.2.0
     ports: ["3000:3000"]
@@ -219,7 +219,7 @@ services:
       timeout: 5s
       retries: 15
 
-  # khangtna — AIRFLOW INIT: tạo metadata, tài khoản admin và giữ DAG Paused.
+  # AIRFLOW INIT: tạo metadata, tài khoản admin và giữ DAG Paused.
   airflow-init:
     image: smart-city-airflow:2.10.2
     build:

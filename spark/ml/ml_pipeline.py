@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -133,8 +134,22 @@ def main():
         # Xuất báo cáo JSON để tra cứu kết quả và đường dẫn mô hình.
         target = Path("/opt/project/experiments/forecasting/latest_metrics.json")
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps(report, indent=2), encoding="utf-8")
-        target.chmod(0o664)
+        # Tạo file mới trong cùng volume rồi thay thế nguyên tử: không chmod file
+        # có thể thuộc user Spark khác với user Airflow đang chạy driver.
+        temporary_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=target.parent,
+                prefix=".latest_metrics-", suffix=".json", delete=False,
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+                temporary.write(json.dumps(report, indent=2))
+                temporary.flush()
+                os.fchmod(temporary.fileno(), 0o664)
+            temporary_path.replace(target)
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
         print(json.dumps(report), flush=True)
     finally:
         features.unpersist()
